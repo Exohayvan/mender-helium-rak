@@ -30,9 +30,104 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y quilt parted coreutils qemu-user-static debootstrap zerofree zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl
 
-      - name: Copy docker-compose.yml
+      - name: Clone Pi-Gen repository
         run: |
-          cp docker-compose.yml pi-gen/root/docker-compose.yml
+          git clone https://github.com/RPi-Distro/pi-gen.git
+          cd pi-gen
+
+      - name: Create Mender installation script
+        run: |
+          mkdir -p pi-gen/stage4/02-mender
+          cat << 'EOF' > pi-gen/stage4/02-mender/00-run.sh
+          #!/bin/bash
+          set -e
+
+          # Install Mender client
+          curl -L https://d1b0l86ne08fsf.cloudfront.net/experimental/mender-client/3.2.0/mender-client-3.2.0-1.armhf.deb -o mender-client.deb
+          dpkg -i mender-client.deb
+
+          # Configure Mender client
+          cat <<EOC > /etc/mender/mender.conf
+          {
+            "InventoryPollIntervalSeconds": 60,
+            "RetryPollIntervalSeconds": 30,
+            "UpdatePollIntervalSeconds": 1800,
+            "TenantToken": "${TENANT_TOKEN}",
+            "Servers": [
+              {
+                "ServerURL": "https://hosted.mender.io"
+              }
+            ]
+          }
+          EOC
+
+          # Enable Mender service
+          systemctl enable mender-client
+          EOF
+          chmod +x pi-gen/stage4/02-mender/00-run.sh
+
+      - name: Create Docker and Docker Compose installation script
+        run: |
+          mkdir -p pi-gen/stage4/03-docker-compose/00-docker-compose
+          cat << 'EOF' > pi-gen/stage4/03-docker-compose/00-docker-compose/00-run.sh
+          #!/bin/bash
+          set -e
+
+          # Install Docker
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sh get-docker.sh
+
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # Add user pi to the docker group
+          usermod -aG docker pi
+
+          # Move docker-compose.yml to /home/pi/
+          mv /files/docker-compose.yml /home/pi/docker-compose.yml
+
+          # Run Docker Compose
+          cd /home/pi
+          docker-compose up -d
+          EOF
+          chmod +x pi-gen/stage4/03-docker-compose/00-docker-compose/00-run.sh
+
+      - name: Create Docker Compose systemd service script
+        run: |
+          mkdir -p pi-gen/stage4/03-docker-compose/01-docker-service
+          cat << 'EOF' > pi-gen/stage4/03-docker-compose/01-docker-service/00-run.sh
+          #!/bin/bash
+          set -e
+
+          # Create systemd service file for Docker Compose
+          cat <<EOC > /etc/systemd/system/docker-compose-app.service
+          [Unit]
+          Description=Docker Compose Application Service
+          Requires=docker.service
+          After=docker.service
+
+          [Service]
+          WorkingDirectory=/home/pi
+          ExecStart=/usr/local/bin/docker-compose up -d
+          ExecStop=/usr/local/bin/docker-compose down
+          Restart=always
+          User=pi
+
+          [Install]
+          WantedBy=multi-user.target
+          EOC
+
+          # Reload systemd and enable the service
+          systemctl daemon-reload
+          systemctl enable docker-compose-app.service
+          EOF
+          chmod +x pi-gen/stage4/03-docker-compose/01-docker-service/00-run.sh
+
+      - name: Copy docker-compose.yml to pi-gen stage directory
+        run: |
+          mkdir -p pi-gen/stage4/03-docker-compose/files
+          cp docker-compose.yml pi-gen/stage4/03-docker-compose/files/docker-compose.yml
 
       - name: Build image
         run: |
