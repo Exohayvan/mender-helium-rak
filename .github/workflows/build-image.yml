@@ -36,6 +36,10 @@ jobs:
           git clone https://github.com/RPi-Distro/pi-gen.git
           cd pi-gen
 
+      - name: Create necessary directories
+        run: |
+          mkdir -p pi-gen/work/raspios-bookworm-armhf
+
       - name: Create Mender installation script
         run: |
           mkdir -p pi-gen/stage4/02-mender
