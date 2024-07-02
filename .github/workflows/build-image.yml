@@ -1,0 +1,46 @@
+name: Build Raspberry Pi Image
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  TENANT_TOKEN: ${{ secrets.TENANT_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y quilt parted realpath qemu-user-static debootstrap zerofree zip dosfstools bsdtar libcap2-bin grep rsync xz-utils file git curl
+
+      - name: Copy docker-compose.yml
+        run: |
+          cp docker-compose.yml pi-gen/root/docker-compose.yml
+
+      - name: Build image
+        run: |
+          cd pi-gen
+          sudo ./build.sh
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: raspberry-pi-image
+          path: pi-gen/deploy/*.zip
