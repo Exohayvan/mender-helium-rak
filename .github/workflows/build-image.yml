@@ -9,6 +9,7 @@ on:
       - main
 
 env:
+  JWT_TOKEN: ${{ secrets.JWT_TOKEN }}
   TENANT_TOKEN: ${{ secrets.TENANT_TOKEN }}
 
 jobs:
@@ -28,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y quilt parted coreutils qemu-user-static debootstrap zerofree zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl arch-test
+          sudo apt-get install -y quilt parted coreutils qemu-user-static debootstrap zerofree zip dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl
 
       - name: Clone Pi-Gen repository
         run: |
@@ -43,23 +44,7 @@ jobs:
           set -e
 
           # Install Mender client
-          curl -L https://d1b0l86ne08fsf.cloudfront.net/experimental/mender-client/3.2.0/mender-client-3.2.0-1.armhf.deb -o mender-client.deb
-          dpkg -i mender-client.deb
-
-          # Configure Mender client
-          cat <<EOC > /etc/mender/mender.conf
-          {
-            "InventoryPollIntervalSeconds": 60,
-            "RetryPollIntervalSeconds": 30,
-            "UpdatePollIntervalSeconds": 1800,
-            "TenantToken": "${TENANT_TOKEN}",
-            "Servers": [
-              {
-                "ServerURL": "https://hosted.mender.io"
-              }
-            ]
-          }
-          EOC
+          wget -O- https://get.mender.io | sudo bash -s -- --demo --commercial --jwt-token ${JWT_TOKEN} --force-mender-client4 -- --quiet --device-type "raspberrypi4" --tenant-token ${TENANT_TOKEN} --demo --server-url https://hosted.mender.io --server-cert=""
 
           # Enable Mender service
           systemctl enable mender-client
